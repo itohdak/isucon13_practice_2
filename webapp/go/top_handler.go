@@ -36,7 +36,7 @@ func getTagHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
 	}
 	for _, tag := range tagModels {
-		tagCacheByID.Store(tag.ID, tag)
+		tagCacheByID.Store(tag.ID, *tag)
 	}
 
 	if err := tx.Commit(); err != nil {
