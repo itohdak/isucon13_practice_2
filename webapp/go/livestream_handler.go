@@ -20,6 +20,7 @@ var (
 	allTags            []*TagModel
 	tagCacheByID       sync.Map
 	tagCacheByName     sync.Map
+	livestreamCache    sync.Map
 	livestreamTagCache sync.Map
 )
 
@@ -80,6 +81,21 @@ type ScoreModel struct {
 	Score int64 `db:"score"`
 }
 
+func getLivestream(ctx context.Context, tx *sqlx.Tx, id int64) (livestream LivestreamModel, err error) {
+	if livestreamCached, found := livestreamCache.Load(id); found {
+		livestream = livestreamCached.(LivestreamModel)
+	} else {
+		err = tx.GetContext(ctx, &livestream, "SELECT * FROM livestreams WHERE id = ?", id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return LivestreamModel{}, echo.NewHTTPError(http.StatusNotFound, "not found livestream that has the given id")
+		}
+		if err != nil {
+			return LivestreamModel{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
+		}
+		livestreamCache.Store(id, livestream)
+	}
+	return livestream, nil
+}
 func reserveLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 	defer c.Request().Body.Close()
@@ -217,8 +233,9 @@ func searchLivestreamsHandler(c echo.Context) error {
 
 		for _, keyTaggedLivestream := range keyTaggedLivestreams {
 			ls := LivestreamModel{}
-			if err := tx.GetContext(ctx, &ls, "SELECT * FROM livestreams WHERE id = ?", keyTaggedLivestream.LivestreamID); err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
+			ls, err = getLivestream(ctx, tx, keyTaggedLivestream.LivestreamID)
+			if err != nil {
+				return err
 			}
 
 			livestreamModels = append(livestreamModels, &ls)
@@ -426,12 +443,9 @@ func getLivestreamHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	livestreamModel := LivestreamModel{}
-	err = tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusNotFound, "not found livestream that has the given id")
-	}
+	livestreamModel, err = getLivestream(ctx, tx, int64(livestreamID))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
+		return err
 	}
 
 	livestream, err := fillLivestreamResponse(ctx, tx, livestreamModel)
@@ -465,8 +479,9 @@ func getLivecommentReportsHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	var livestreamModel LivestreamModel
-	if err := tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
+	livestreamModel, err = getLivestream(ctx, tx, int64(livestreamID))
+	if err != nil {
+		return err
 	}
 
 	// error already check
