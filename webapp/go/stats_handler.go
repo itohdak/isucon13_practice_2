@@ -251,7 +251,7 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
 	}
 
-	var scores map[int64]int64
+	scores := make(map[int64]int64, len(livestreams))
 	for _, livestream := range livestreams {
 		scores[livestream.ID] = 0
 	}
