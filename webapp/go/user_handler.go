@@ -333,7 +333,7 @@ func loginHandler(c echo.Context) error {
 	userModel := UserModel{}
 	userModel, err = getUserByName(req.Username, tx, ctx)
 	if err != nil {
-		return err
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid username or password")
 	}
 
 	if err := tx.Commit(); err != nil {
