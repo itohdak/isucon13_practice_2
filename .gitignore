@@ -13,7 +13,7 @@ bin
 go
 local
 
-webapp/nodejs/
+webapp/node/
 webapp/perl/
 webapp/php/
 webapp/python/
