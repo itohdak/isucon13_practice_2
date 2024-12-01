@@ -33,6 +33,7 @@ var fallbackImage = "../img/NoImage.jpg"
 
 var (
 	iconCache       sync.Map
+	iconHashCache   sync.Map
 	userCacheByID   sync.Map
 	userCacheByName sync.Map
 	themeCache      sync.Map
@@ -200,6 +201,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
 	iconCache.Store(userID, req.Image)
+	iconHashCache.Delete(userID)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
 		ID: iconID,
@@ -459,7 +461,13 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		}
 		iconCache.Store(userModel.ID, image)
 	}
-	iconHash := sha256.Sum256(image)
+	var iconHash [32]byte
+	if iconHashCached, found := iconHashCache.Load(userModel.ID); found {
+		iconHash = iconHashCached.([32]byte)
+	} else {
+		iconHash = sha256.Sum256(image)
+		iconHashCache.Store(userModel.ID, iconHash)
+	}
 
 	user := User{
 		ID:          userModel.ID,
