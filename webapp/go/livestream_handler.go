@@ -517,6 +517,7 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 		if err := tx.SelectContext(ctx, &livestreamTagModels, "SELECT * FROM livestream_tags WHERE livestream_id = ?", livestreamModel.ID); err != nil {
 			return Livestream{}, err
 		}
+		livestreamTagCache.Store(livestreamModel.ID, livestreamTagModels)
 	}
 
 	tags := make([]Tag, len(livestreamTagModels))
