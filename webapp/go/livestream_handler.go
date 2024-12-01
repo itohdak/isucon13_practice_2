@@ -8,11 +8,18 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
+)
+
+var (
+	allTags        []*TagModel
+	tagCacheByID   sync.Map
+	tagCacheByName sync.Map
 )
 
 type ReserveLivestreamRequest struct {
@@ -184,8 +191,13 @@ func searchLivestreamsHandler(c echo.Context) error {
 	if c.QueryParam("tag") != "" {
 		// タグによる取得
 		var tagIDList []int
-		if err := tx.SelectContext(ctx, &tagIDList, "SELECT id FROM tags WHERE name = ?", keyTagName); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
+		if tagCached, found := tagCacheByName.Load(keyTagName); found {
+			tagIDList = tagCached.([]int)
+		} else {
+			if err := tx.SelectContext(ctx, &tagIDList, "SELECT id FROM tags WHERE name = ?", keyTagName); err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
+			}
+			tagCacheByName.Store(keyTagName, tagIDList)
 		}
 
 		query, params, err := sqlx.In("SELECT * FROM livestream_tags WHERE tag_id IN (?) ORDER BY livestream_id DESC", tagIDList)
@@ -502,8 +514,13 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 	tags := make([]Tag, len(livestreamTagModels))
 	for i := range livestreamTagModels {
 		tagModel := TagModel{}
-		if err := tx.GetContext(ctx, &tagModel, "SELECT * FROM tags WHERE id = ?", livestreamTagModels[i].TagID); err != nil {
-			return Livestream{}, err
+		if tagCached, found := tagCacheByID.Load(livestreamTagModels[i].TagID); found {
+			tagModel = tagCached.(TagModel)
+		} else {
+			if err := tx.GetContext(ctx, &tagModel, "SELECT * FROM tags WHERE id = ?", livestreamTagModels[i].TagID); err != nil {
+				return Livestream{}, err
+			}
+			tagCacheByID.Store(livestreamTagModels[i].TagID, tagModel)
 		}
 
 		tags[i] = Tag{
