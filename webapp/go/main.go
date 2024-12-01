@@ -42,7 +42,6 @@ var (
 
 func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		next(c)
 		currURL := c.Request().URL
 		cookie, err := c.Cookie("my_session_id")
 		sid := cookie.Value
@@ -62,6 +61,9 @@ func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 		}
 		userPrevActivity.Store(sid, currURL)
+		if err = next(c); err != nil {
+			c.Error(err)
+		}
 		return nil
 	}
 }
