@@ -74,6 +74,11 @@ type ReservationSlotModel struct {
 	EndAt   int64 `db:"end_at" json:"end_at"`
 }
 
+type ScoreModel struct {
+	ID    int64 `db:"id"`
+	Score int64 `db:"score"`
+}
+
 func reserveLivestreamHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 	defer c.Request().Body.Close()
