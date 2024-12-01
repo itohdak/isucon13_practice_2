@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -106,7 +107,6 @@ func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 				trans := fmt.Sprintf("%s --> %s", prevURL, currURL)
 				cnt, _ := userActivity.LoadOrStore(trans, int64(0))
 				userActivity.Store(trans, cnt.(int64)+1)
-				log.Printf("%s: %d\n", trans, cnt.(int64)+1)
 			}
 		}
 		userPrevActivity.Store(sid, currURL)
@@ -299,6 +299,20 @@ func main() {
 		e.Logger.Errorf("failed to start HTTP server: %v", err)
 		os.Exit(1)
 	}
+
+	go func() {
+		for {
+			m := map[string]interface{}{}
+			userActivity.Range(func(key, value interface{}) bool {
+				m[fmt.Sprint(key)] = value
+				return true
+			})
+			for trans, cnt := range m {
+				log.Printf("%s: %d\n", trans, cnt.(int64))
+			}
+			time.Sleep(1 * time.Minute)
+		}
+	}()
 }
 
 type ErrorResponse struct {
