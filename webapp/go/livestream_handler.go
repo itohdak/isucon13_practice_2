@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	allTags        []*TagModel
-	tagCacheByID   sync.Map
-	tagCacheByName sync.Map
+	allTags            []*TagModel
+	tagCacheByID       sync.Map
+	tagCacheByName     sync.Map
+	livestreamTagCache sync.Map
 )
 
 type ReserveLivestreamRequest struct {
@@ -306,12 +307,9 @@ func getUserLivestreamsHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	var user UserModel
-	if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", username); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "user not found")
-		} else {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
-		}
+	user, err = getUserByName(username, tx, ctx)
+	if err != nil {
+		return err
 	}
 
 	var livestreamModels []*LivestreamModel
@@ -503,7 +501,8 @@ func getLivecommentReportsHandler(c echo.Context) error {
 
 func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel LivestreamModel) (Livestream, error) {
 	ownerModel := UserModel{}
-	if err := tx.GetContext(ctx, &ownerModel, "SELECT * FROM users WHERE id = ?", livestreamModel.UserID); err != nil {
+	ownerModel, err := getUserByID(livestreamModel.UserID, tx, ctx)
+	if err != nil {
 		return Livestream{}, err
 	}
 	owner, err := fillUserResponse(ctx, tx, ownerModel)
@@ -512,8 +511,12 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 	}
 
 	var livestreamTagModels []*LivestreamTagModel
-	if err := tx.SelectContext(ctx, &livestreamTagModels, "SELECT * FROM livestream_tags WHERE livestream_id = ?", livestreamModel.ID); err != nil {
-		return Livestream{}, err
+	if livestreamTagCached, found := livestreamTagCache.Load(livestreamModel.ID); found {
+		livestreamTagModels = livestreamTagCached.([]*LivestreamTagModel)
+	} else {
+		if err := tx.SelectContext(ctx, &livestreamTagModels, "SELECT * FROM livestream_tags WHERE livestream_id = ?", livestreamModel.ID); err != nil {
+			return Livestream{}, err
+		}
 	}
 
 	tags := make([]Tag, len(livestreamTagModels))
