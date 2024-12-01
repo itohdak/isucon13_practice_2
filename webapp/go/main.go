@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/go-sql-driver/mysql"
@@ -42,20 +41,59 @@ var (
 	userActivity     sync.Map
 )
 
-var re *regexp.Regexp
+// パターンごとにマッチした部分をそのまま置換する関数
+func replaceWithMatchedPattern(input string, patterns []string) (string, error) {
+	// 結果を保持する文字列
+	result := input
 
-// 正規表現パターンに基づいてマッチした部分をそのまま置換する関数
-func replaceWithMatchedPatterns(input string, re *regexp.Regexp) string {
-	// マッチした部分をそのまま返す
-	return re.ReplaceAllStringFunc(input, func(match string) string {
-		return match // マッチした部分そのものを返す
-	})
+	for _, pattern := range patterns {
+		// パターンをコンパイル
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return "", fmt.Errorf("正規表現のコンパイルに失敗しました: %v", err)
+		}
+
+		// マッチした部分をそのまま置換
+		result = re.ReplaceAllStringFunc(result, func(match string) string {
+			return match // マッチした部分そのものを返す
+		})
+	}
+
+	return result, nil
 }
 
 func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		rawURL := c.Request().URL.Path
-		currURL := replaceWithMatchedPatterns(rawURL, re)
+		currURL, _ := replaceWithMatchedPattern(rawURL, []string{
+			`^/api/initialize$`,
+			`^/api/tag$`,
+			`^/api/user/[0-9a-zA-Z]+/theme$`,
+			`^/api/livestream/reservation$`,
+			`^/api/livestream/search$`,
+			`^/api/livestream$`,
+			`^/api/user/[0-9a-zA-Z]+/livestream$`,
+			`^/api/livestream/[0-9a-zA-Z]+$`,
+			`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
+			`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
+			`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
+			`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
+			`^/api/livestream/[0-9a-zA-Z]+/report$`,
+			`^/api/livestream/[0-9a-zA-Z]+/ngwords$`,
+			`^/api/livestream/[0-9a-zA-Z]+/livecomment/[0-9a-zA-Z]+/report$`,
+			`^/api/livestream/[0-9a-zA-Z]+/moderate$`,
+			`^/api/livestream/[0-9a-zA-Z]+/enter$`,
+			`^/api/livestream/[0-9a-zA-Z]+/exit$`,
+			`^/api/register$`,
+			`^/api/login$`,
+			`^/api/user/me$`,
+			`^/api/user/[0-9a-zA-Z]+$`,
+			`^/api/user/[0-9a-zA-Z]+/statistics$`,
+			`^/api/user/[0-9a-zA-Z]+/icon$`,
+			`^/api/icon$`,
+			`^/api/livestream/[0-9a-zA-Z]+/statistics$`,
+			`^/api/payment$`,
+		})
 		cookie, err := c.Cookie("my_session_id")
 		sid := cookie.Value
 		if err != nil {
@@ -174,38 +212,6 @@ func initializeHandler(c echo.Context) error {
 
 func main() {
 	go standalone.Integrate(":8888")
-
-	patterns := []string{
-		`^/api/initialize$`,
-		`^/api/tag$`,
-		`^/api/user/[0-9a-zA-Z]+/theme$`,
-		`^/api/livestream/reservation$`,
-		`^/api/livestream/search$`,
-		`^/api/livestream$`,
-		`^/api/user/[0-9a-zA-Z]+/livestream$`,
-		`^/api/livestream/[0-9a-zA-Z]+$`,
-		`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
-		`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
-		`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
-		`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
-		`^/api/livestream/[0-9a-zA-Z]+/report$`,
-		`^/api/livestream/[0-9a-zA-Z]+/ngwords$`,
-		`^/api/livestream/[0-9a-zA-Z]+/livecomment/[0-9a-zA-Z]+/report$`,
-		`^/api/livestream/[0-9a-zA-Z]+/moderate$`,
-		`^/api/livestream/[0-9a-zA-Z]+/enter$`,
-		`^/api/livestream/[0-9a-zA-Z]+/exit$`,
-		`^/api/register$`,
-		`^/api/login$`,
-		`^/api/user/me$`,
-		`^/api/user/[0-9a-zA-Z]+$`,
-		`^/api/user/[0-9a-zA-Z]+/statistics$`,
-		`^/api/user/[0-9a-zA-Z]+/icon$`,
-		`^/api/icon$`,
-		`^/api/livestream/[0-9a-zA-Z]+/statistics$`,
-		`^/api/payment$`,
-	}
-	combinedPattern := "(" + strings.Join(patterns, "|") + ")" // パターンを選択肢として結合
-	re = regexp.MustCompile(combinedPattern)
 
 	e := echo.New()
 	e.Debug = true
