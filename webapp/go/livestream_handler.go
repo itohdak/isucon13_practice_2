@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	allTags        []*TagModel
 	tagCacheByID   sync.Map
 	tagCacheByName sync.Map
 )

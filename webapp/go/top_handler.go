@@ -32,11 +32,16 @@ func getTagHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	var tagModels []*TagModel
-	if err := tx.SelectContext(ctx, &tagModels, "SELECT * FROM tags"); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
-	}
-	for _, tag := range tagModels {
-		tagCacheByID.Store(tag.ID, *tag)
+	if len(allTags) > 0 {
+		tagModels = allTags
+	} else {
+		if err := tx.SelectContext(ctx, &tagModels, "SELECT * FROM tags"); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
+		}
+		for _, tag := range tagModels {
+			tagCacheByID.Store(tag.ID, *tag)
+		}
+		allTags = tagModels
 	}
 
 	if err := tx.Commit(); err != nil {
