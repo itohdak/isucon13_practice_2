@@ -54,9 +54,7 @@ func replaceWithMatchedPattern(input string, patterns []string) (string, error) 
 		}
 
 		// マッチした部分をそのまま置換
-		result = re.ReplaceAllStringFunc(result, func(match string) string {
-			return match // マッチした部分そのものを返す
-		})
+		result = re.ReplaceAllString(result, pattern)
 	}
 
 	return result, nil
