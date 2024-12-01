@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -33,7 +35,36 @@ var (
 	powerDNSSubdomainAddress string
 	dbConn                   *sqlx.DB
 	secret                   = []byte("isucon13_session_cookiestore_defaultsecret")
+
+	userPrevActivity sync.Map
+	userActivity     sync.Map
 )
+
+func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		next(c)
+		currURL := c.Request().URL
+		cookie, err := c.Cookie("my_session_id")
+		sid := cookie.Value
+		if err != nil {
+			uuid, _ := uuid.NewRandom()
+			c.SetCookie(&http.Cookie{
+				Name:  "my_session_id",
+				Value: fmt.Sprintf("%s", uuid),
+			})
+			sid = fmt.Sprintf("%s", uuid)
+		} else {
+			if prevURL, ok := userPrevActivity.Load(sid); ok {
+				trans := fmt.Sprintf("%s --> %s", prevURL, currURL)
+				cnt, _ := userActivity.LoadOrStore(trans, int64(0))
+				userActivity.Store(trans, cnt.(int64)+1)
+				log.Printf("%s: %d\n", trans, cnt.(int64)+1)
+			}
+		}
+		userPrevActivity.Store(sid, currURL)
+		return nil
+	}
+}
 
 func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -137,6 +168,7 @@ func main() {
 	cookieStore.Options.Domain = "*.u.isucon.local"
 	e.Use(session.Middleware(cookieStore))
 	// e.Use(middleware.Recover())
+	e.Use(myMiddleware)
 
 	// 初期化
 	e.POST("/api/initialize", initializeHandler)
