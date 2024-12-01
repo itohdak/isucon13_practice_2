@@ -210,6 +210,25 @@ func initializeHandler(c echo.Context) error {
 
 func main() {
 	go standalone.Integrate(":8888")
+	go func() {
+		log.Printf("hello\n")
+		for {
+			log.Printf("debug1\n")
+			m := map[string]interface{}{}
+			log.Printf("debug2\n")
+			userActivity.Range(func(key, value interface{}) bool {
+				m[fmt.Sprint(key)] = value
+				return true
+			})
+			log.Printf("debug3\n")
+			for trans, cnt := range m {
+				log.Printf("%s: %d\n", trans, cnt.(int64))
+			}
+			log.Printf("debug4\n")
+			time.Sleep(1 * time.Minute)
+			log.Printf("debug5\n")
+		}
+	}()
 
 	e := echo.New()
 	e.Debug = true
@@ -299,20 +318,6 @@ func main() {
 		e.Logger.Errorf("failed to start HTTP server: %v", err)
 		os.Exit(1)
 	}
-
-	go func() {
-		for {
-			m := map[string]interface{}{}
-			userActivity.Range(func(key, value interface{}) bool {
-				m[fmt.Sprint(key)] = value
-				return true
-			})
-			for trans, cnt := range m {
-				log.Printf("%s: %d\n", trans, cnt.(int64))
-			}
-			time.Sleep(1 * time.Minute)
-		}
-	}()
 }
 
 type ErrorResponse struct {
