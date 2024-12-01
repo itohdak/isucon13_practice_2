@@ -32,7 +32,10 @@ const (
 var fallbackImage = "../img/NoImage.jpg"
 
 var (
-	iconCache sync.Map
+	iconCache       sync.Map
+	userCacheByID   sync.Map
+	userCacheByName sync.Map
+	themeCache      sync.Map
 )
 
 type UserModel struct {
@@ -90,6 +93,37 @@ type PostIconResponse struct {
 	ID int64 `json:"id"`
 }
 
+func getUserByID(userID int64, tx *sqlx.Tx, ctx context.Context) (user UserModel, err error) {
+	if userCached, found := userCacheByID.Load(userID); found {
+		user = userCached.(UserModel)
+	} else {
+		if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE id = ?", userID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return UserModel{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the userid in session")
+			}
+			return UserModel{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		}
+		userCacheByID.Store(user.ID, user)
+		userCacheByName.Store(user.Name, user)
+	}
+	return user, nil
+}
+func getUserByName(userName string, tx *sqlx.Tx, ctx context.Context) (user UserModel, err error) {
+	if userCached, found := userCacheByName.Load(userName); found {
+		user = userCached.(UserModel)
+	} else {
+		if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", userName); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return UserModel{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+			}
+			return UserModel{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		}
+		userCacheByID.Store(user.ID, user)
+		userCacheByName.Store(user.Name, user)
+	}
+	return user, nil
+}
+
 func getIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -102,11 +136,9 @@ func getIconHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	var user UserModel
-	if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", username); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+	user, err = getUserByName(username, tx, ctx)
+	if err != nil {
+		return err
 	}
 
 	var image []byte
@@ -194,12 +226,9 @@ func getMeHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	userModel := UserModel{}
-	err = tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusNotFound, "not found user that has the userid in session")
-	}
+	userModel, err = getUserByID(userID, tx, ctx)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		return err
 	}
 
 	user, err := fillUserResponse(ctx, tx, userModel)
@@ -279,6 +308,7 @@ func registerHandler(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
+	userCacheByID.Store(userModel.ID, userModel)
 
 	return c.JSON(http.StatusCreated, user)
 }
@@ -301,13 +331,9 @@ func loginHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	userModel := UserModel{}
-	// usernameはUNIQUEなので、whereで一意に特定できる
-	err = tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE name = ?", req.Username)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid username or password")
-	}
+	userModel, err = getUserByName(req.Username, tx, ctx)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid username or password")
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -366,11 +392,9 @@ func getUserHandler(c echo.Context) error {
 	defer tx.Rollback()
 
 	userModel := UserModel{}
-	if err := tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE name = ?", username); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+	userModel, err = getUserByName(username, tx, ctx)
+	if err != nil {
+		return err
 	}
 
 	user, err := fillUserResponse(ctx, tx, userModel)
@@ -411,8 +435,13 @@ func verifyUserSession(c echo.Context) error {
 
 func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (User, error) {
 	themeModel := ThemeModel{}
-	if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
-		return User{}, err
+	if themeCached, found := themeCache.Load(userModel.ID); found {
+		themeModel = themeCached.(ThemeModel)
+	} else {
+		if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
+			return User{}, err
+		}
+		themeCache.Store(userModel.ID, themeModel)
 	}
 
 	var image []byte
