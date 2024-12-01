@@ -246,7 +246,7 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 	if err := tx.SelectContext(
 		ctx,
 		&totalTipsList,
-		"SELECT IFNULL(SUM(l2.tip), 0) FROM livestreams l INNER JOIN livecomments l2 ON l.id = l2.livestream_id GROUP BY l.id",
+		"SELECT l.id AS id, IFNULL(SUM(l2.tip), 0) AS score FROM livestreams l INNER JOIN livecomments l2 ON l.id = l2.livestream_id GROUP BY l.id",
 	); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
 	}
