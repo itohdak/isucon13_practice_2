@@ -35,6 +35,9 @@ func getTagHandler(c echo.Context) error {
 	if err := tx.SelectContext(ctx, &tagModels, "SELECT * FROM tags"); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get tags: "+err.Error())
 	}
+	for _, tag := range tagModels {
+		tagCacheByID.Store(tag.ID, tag)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
