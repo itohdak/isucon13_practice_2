@@ -91,32 +91,43 @@ func getUserStatisticsHandler(c echo.Context) error {
 	if err := tx.SelectContext(ctx, &users, "SELECT * FROM users"); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get users: "+err.Error())
 	}
-
-	var ranking UserRanking
+	userNames := make(map[int64]string, len(users))
 	for _, user := range users {
-		var reactions int64
-		query := `
-		SELECT COUNT(*) FROM users u
-		INNER JOIN livestreams l ON l.user_id = u.id
-		INNER JOIN reactions r ON r.livestream_id = l.id
-		WHERE u.id = ?`
-		if err := tx.GetContext(ctx, &reactions, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count reactions: "+err.Error())
-		}
+		userNames[user.ID] = user.Name
+	}
 
-		var tips int64
-		query = `
-		SELECT IFNULL(SUM(l2.tip), 0) FROM users u
-		INNER JOIN livestreams l ON l.user_id = u.id	
-		INNER JOIN livecomments l2 ON l2.livestream_id = l.id
-		WHERE u.id = ?`
-		if err := tx.GetContext(ctx, &tips, query, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
-		}
+	var reactionsList []ScoreModel
+	if err := tx.SelectContext(
+		ctx,
+		&reactionsList,
+		"SELECT u.id AS id, COUNT(*) AS score FROM users u INNER JOIN livestreams l ON l.user_id = u.id INNER JOIN reactions r ON r.livestream_id = l.id GROUP BY u.id",
+	); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to count reactions: "+err.Error())
+	}
 
-		score := reactions + tips
+	var totalTipsList []ScoreModel
+	if err := tx.SelectContext(
+		ctx,
+		&totalTipsList,
+		"SELECT u.id AS id, IFNULL(SUM(l2.tip), 0) AS score FROM users u INNER JOIN livestreams l ON l.user_id = u.id INNER JOIN livecomments l2 ON l2.livestream_id = l.id GROUP BY u.id",
+	); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
+	}
+
+	scores := make(map[int64]int64, len(users))
+	for _, user := range users {
+		scores[user.ID] = 0
+	}
+	for _, reactions := range reactionsList {
+		scores[reactions.ID] += reactions.Score
+	}
+	for _, totalTips := range totalTipsList {
+		scores[totalTips.ID] += totalTips.Score
+	}
+	var ranking UserRanking
+	for id, score := range scores {
 		ranking = append(ranking, UserRankingEntry{
-			Username: user.Name,
+			Username: userNames[id],
 			Score:    score,
 		})
 	}
