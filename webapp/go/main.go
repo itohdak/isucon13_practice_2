@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +64,7 @@ func replaceWithMatchedPattern(input string, patterns []string) (string, error) 
 
 func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		currMethod := c.Request().Method
 		rawURL := c.Request().URL.Path
 		currURL, _ := replaceWithMatchedPattern(rawURL, []string{
 			`^/api/initialize$`,
@@ -103,13 +105,23 @@ func myMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			})
 			sid = fmt.Sprintf("%s", uuid)
 		} else {
-			if prevURL, ok := userPrevActivity.Load(sid); ok {
-				trans := fmt.Sprintf("%s --> %s", prevURL, currURL)
+			if prevActivityCached, found := userPrevActivity.Load(sid); found {
+				prevActivity := prevActivityCached.(struct {
+					Method string
+					URL    string
+				})
+				trans := fmt.Sprintf("%s %s --> %s %s", prevActivity.Method, prevActivity.URL, currMethod, currURL)
 				cnt, _ := userActivity.LoadOrStore(trans, int64(0))
 				userActivity.Store(trans, cnt.(int64)+1)
 			}
 		}
-		userPrevActivity.Store(sid, currURL)
+		userPrevActivity.Store(sid, struct {
+			Method string
+			URL    string
+		}{
+			Method: currMethod,
+			URL:    currURL,
+		})
 		if err = next(c); err != nil {
 			c.Error(err)
 		}
@@ -211,22 +223,59 @@ func initializeHandler(c echo.Context) error {
 func main() {
 	go standalone.Integrate(":8888")
 	go func() {
-		log.Printf("hello\n")
 		for {
-			log.Printf("debug1\n")
-			m := map[string]interface{}{}
-			log.Printf("debug2\n")
+			m := map[string]int64{}
 			userActivity.Range(func(key, value interface{}) bool {
-				m[fmt.Sprint(key)] = value
+				m[fmt.Sprint(key)] = value.(int64)
 				return true
 			})
-			log.Printf("debug3\n")
-			for trans, cnt := range m {
-				log.Printf("%s: %d\n", trans, cnt.(int64))
+			userStateStrings := sync.Map{}
+			var mermaidString string
+			mermaidString += "```mermaid\ngraph LR\n"
+			var maxCount int64 = 0
+			for _, cnt := range m {
+				maxCount = max(maxCount, cnt)
 			}
-			log.Printf("debug4\n")
+			var id int64 = 0
+			for trans, cnt := range m {
+				if cnt <= 1 {
+					continue
+				}
+				transList := strings.Split(trans, " --> ")
+				from := transList[0]
+				to := transList[1]
+				var fromString string
+				var toString string
+				if str, found := userStateStrings.Load(from); found {
+					fromString = str.(string)
+				} else {
+					uuid, _ := uuid.NewRandom()
+					fromString = fmt.Sprintf("%s[\"%s\"]", uuid, from)
+					userStateStrings.Store(from, fromString)
+				}
+				if str, found := userStateStrings.Load(to); found {
+					toString = str.(string)
+				} else {
+					uuid, _ := uuid.NewRandom()
+					toString = fmt.Sprintf("%s[\"%s\"]", uuid, to)
+					userStateStrings.Store(to, toString)
+				}
+				mermaidString += fmt.Sprintf(
+					"  %s -->|%d| %s\n",
+					fromString,
+					cnt,
+					toString,
+				)
+				mermaidString += fmt.Sprintf(
+					"  linkStyle %d stroke-width:%.1fpx;\n",
+					id,
+					1+float32(29)*float32(cnt)/float32(maxCount),
+				)
+				id++
+			}
+			mermaidString += "```"
+			log.Printf("%s", mermaidString)
 			time.Sleep(1 * time.Minute)
-			log.Printf("debug5\n")
 		}
 	}()
 
