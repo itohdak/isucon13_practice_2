@@ -117,4 +117,5 @@ CREATE TABLE `reactions` (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 CREATE INDEX reactions_livestream_id_created_at ON reactions(`livestream_id`, `created_at`);
 
+USE `isudns`;
 CREATE INDEX records_name_type ON records(`name`, `type`);
