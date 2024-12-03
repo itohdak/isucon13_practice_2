@@ -4,8 +4,9 @@ go 1.23.3
 
 require (
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/google/uuid v1.3.1
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.2.2
+	github.com/itohdak/usertrail v1.0.0
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/kaz/pprotein v1.2.4
 	github.com/labstack/echo-contrib v0.15.0
