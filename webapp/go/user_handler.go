@@ -34,6 +34,7 @@ var fallbackImage = "../img/NoImage.jpg"
 var (
 	iconCache       sync.Map
 	iconHashCache   sync.Map
+	iconHashSet     sync.Map
 	userCacheByID   sync.Map
 	userCacheByName sync.Map
 	themeCache      sync.Map
@@ -129,6 +130,14 @@ func getIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	username := c.Param("username")
+
+	ifNoneMatch := c.Request().Header["If-None-Match"]
+	if ifNoneMatch != nil {
+		iconHash := ifNoneMatch[0]
+		if _, found := iconHashSet.Load(iconHash[1 : len(iconHash)-1]); found {
+			return c.NoContent(http.StatusNotModified)
+		}
+	}
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {
@@ -467,6 +476,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 	} else {
 		iconHash = sha256.Sum256(image)
 		iconHashCache.Store(userModel.ID, iconHash)
+		iconHashSet.Store(fmt.Sprintf("%x", iconHash), struct{}{})
 	}
 
 	user := User{
