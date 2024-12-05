@@ -21,6 +21,7 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
 
+	usertrail "github.com/itohdak/usertrail/integration/echov4"
 	"github.com/kaz/pprotein/integration/standalone"
 )
 
@@ -137,6 +138,36 @@ func main() {
 	cookieStore.Options.Domain = "*.u.isucon.local"
 	e.Use(session.Middleware(cookieStore))
 	// e.Use(middleware.Recover())
+
+	usertrail.Integrate(e, []string{
+		`^/api/initialize$`,
+		`^/api/tag$`,
+		`^/api/user/[0-9a-zA-Z]+/theme$`,
+		`^/api/livestream/reservation$`,
+		`^/api/livestream/search$`,
+		`^/api/livestream$`,
+		`^/api/user/[0-9a-zA-Z]+/livestream$`,
+		`^/api/livestream/[0-9a-zA-Z]+$`,
+		`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
+		`^/api/livestream/[0-9a-zA-Z]+/livecomment$`,
+		`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
+		`^/api/livestream/[0-9a-zA-Z]+/reaction$`,
+		`^/api/livestream/[0-9a-zA-Z]+/report$`,
+		`^/api/livestream/[0-9a-zA-Z]+/ngwords$`,
+		`^/api/livestream/[0-9a-zA-Z]+/livecomment/[0-9a-zA-Z]+/report$`,
+		`^/api/livestream/[0-9a-zA-Z]+/moderate$`,
+		`^/api/livestream/[0-9a-zA-Z]+/enter$`,
+		`^/api/livestream/[0-9a-zA-Z]+/exit$`,
+		`^/api/register$`,
+		`^/api/login$`,
+		`^/api/user/me$`,
+		`^/api/user/[0-9a-zA-Z]+$`,
+		`^/api/user/[0-9a-zA-Z]+/statistics$`,
+		`^/api/user/[0-9a-zA-Z]+/icon$`,
+		`^/api/icon$`,
+		`^/api/livestream/[0-9a-zA-Z]+/statistics$`,
+		`^/api/payment$`,
+	})
 
 	// 初期化
 	e.POST("/api/initialize", initializeHandler)
